@@ -1,0 +1,11 @@
+[workspace]
+resolver = "3"
+members = [
+    "punynes-core"
+]
+
+[workspace.package]
+rust-version = "1.91.1"
+edition = "2024"
+
+[workspace.dependencies]
