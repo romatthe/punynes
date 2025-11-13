@@ -13,7 +13,7 @@ pub type AddrModeFn = fn(&mut Cpu) -> Operand;
 
 /// Implied mode addressing
 ///
-/// The operand value is implicitly defined by the instruction. We return anything useful.
+/// The operand value is implicitly defined by the instruction. We return nothing useful.
 fn mode_imp(cpu: &mut Cpu) -> Operand {
     cpu.pc = cpu.pc.wrapping_add(1);
     Operand::Value(0) // TODO: Is there a better alternative? Adding an enum adds a match arm.
