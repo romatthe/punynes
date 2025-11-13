@@ -19,9 +19,19 @@ fn mode_imp(cpu: &mut Cpu) -> Operand {
     Operand::Value(0) // TODO: Is there a better alternative? Adding an enum adds a match arm.
 }
 
+/// Absolute mode addressing
+///
+/// The operand value is the next full 16-bit word.
+fn mode_abs(cpu: &mut Cpu) -> Operand {
+    let lo = cpu.read(cpu.pc + 1);
+    let hi = cpu.read(cpu.pc + 2);
+    cpu.pc = cpu.pc.wrapping_add(3);
+    Operand::Address(u16::from_le_bytes([lo, hi]))
+}
+
 /// Accumulator mode addressing
 ///
-/// The value is simply what is stored in the accumulator.
+/// The operaend value is simply what is stored in the accumulator.
 fn mode_acc(cpu: &mut Cpu) -> Operand {
     cpu.pc = cpu.pc.wrapping_add(1);
     Operand::Value(cpu.a)
@@ -29,7 +39,7 @@ fn mode_acc(cpu: &mut Cpu) -> Operand {
 
 /// Immediate mode addressing
 ///
-/// The next byte is used as the value.
+/// The next byte is used as the operand value.
 fn mode_imm(cpu: &mut Cpu) -> Operand {
     let val = cpu.read(cpu.pc + 1);
     cpu.pc = cpu.pc.wrapping_add(2);
