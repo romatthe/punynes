@@ -18,14 +18,14 @@
         let
           pkgs = import nixpkgs {
             inherit system;
-	    overlays = [ (import rust-overlay) ];
+            overlays = [ (import rust-overlay) ];
           };
           toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-        in 
-	{
+        in {
           devShells.default = pkgs.mkShell {
             packages = with pkgs; [
-              toolchain 
+                cargo-nextest
+                toolchain
             ];
 
             shellHook = ''
@@ -33,7 +33,6 @@
             '';
           };
         };
-      };
-    
+    };
 }
 
