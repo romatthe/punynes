@@ -2,7 +2,7 @@ use crate::cpu::Cpu;
 use crate::MemRead;
 
 #[derive(Debug, Clone, Copy)]
-enum Operand {
+pub enum Operand {
     Value(u8),
     Address(u16),
 }

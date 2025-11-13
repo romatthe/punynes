@@ -1,5 +1,6 @@
+use std::ops::{Index, IndexMut};
 use crate::bus::Bus;
-use crate::cpu::addressing::AddrModeFn;
+use crate::cpu::addressing::{AddrModeFn, Operand};
 use crate::{MemRead, MemWrite};
 
 mod addressing;
@@ -19,12 +20,33 @@ struct Cpu {
 
 impl Cpu {
     fn ld(cpu: &mut Cpu, mode: AddrModeFn, reg: Register8) {
-        // Implement indexing on CPU? So you can index by Register8?
-        // match mode(cpu) {
-        //     Operand::Value(val) => cpu[reg] = val,
-        //     Operand::Address(addr) => cpu[reg] = cpu.read_byte(addr),
-        // }
-        // cpu.update_zn_flags(cpu.a);
+        match mode(cpu) {
+            Operand::Value(val) => cpu[reg] = val,
+            Operand::Address(addr) => cpu[reg] = cpu.read(addr),
+        }
+        cpu.update_zn_flags(cpu.a);
+    }
+}
+
+impl Index<Register8> for Cpu {
+    type Output = u8;
+
+    fn index(&self, reg: Register8) -> &Self::Output {
+        match reg {
+            Register8::A => &self.a,
+            Register8::X => &self.x,
+            Register8::Y => &self.y,
+        }
+    }
+}
+
+impl IndexMut<Register8> for Cpu {
+    fn index_mut(&mut self, reg: Register8) -> &mut Self::Output {
+        match reg {
+            Register8::A => &mut self.a,
+            Register8::X => &mut self.x,
+            Register8::Y => &mut self.y,
+        }
     }
 }
 
