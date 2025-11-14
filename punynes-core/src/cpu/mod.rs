@@ -19,12 +19,25 @@ struct Cpu {
 }
 
 impl Cpu {
+    pub fn new() -> Self {
+        Self {
+            bus: Bus::new(),
+            pc: 0,
+            sp: 0,
+            a: 0,
+            x: 0,
+            y: 0,
+            status: 0,
+        }
+    }
+
     fn ld(cpu: &mut Cpu, mode: AddrModeFn, reg: Register8) {
         match mode(cpu) {
             Operand::Value(val) => cpu[reg] = val,
             Operand::Address(addr) => cpu[reg] = cpu.read(addr),
         }
-        cpu.update_zn_flags(cpu.a);
+        // TODO:
+        // cpu.update_zn_flags(cpu.a);
     }
 }
 
