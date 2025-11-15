@@ -8,7 +8,7 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Self {
         Self {
-            ram: [0x0; 0x800],
+            ram: [0x0; 0x0800],
         }
     }
 }
@@ -18,8 +18,6 @@ impl MemRead for Bus {
         match addr {
             // Working RAM
             0x0000..=0x07FF => self.ram[addr as usize],
-            // Working RAM mirror
-            0x0800..=0x1FFF => self.ram[(addr & 0x07FF) as usize],
             _ => todo!("Implement correct memory mapping in bus!")
         }
     }
