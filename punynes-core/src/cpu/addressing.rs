@@ -832,6 +832,10 @@ mod proptests {
         ) {
             // Use 0xFF as ZP address to test wrapping
             let zp_addr = 0xFF;
+
+            // Prevent collision: initial_pc + 1 must not be 0xFF
+            prop_assume!(initial_pc.wrapping_add(1) != 0xFF);
+
             let memory = vec![
                 (initial_pc.wrapping_add(1), zp_addr),
                 (0xFF, base_lo), // At 0xFF
