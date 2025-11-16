@@ -36,6 +36,8 @@ impl Cpu {
 
     }
 
+    /// Execute an instruction with the current emulator state, based on the instruction byte
+    /// provided
     fn exec(&mut self, instruction: u8) {
         match instruction {
             // LDA
@@ -54,6 +56,13 @@ impl Cpu {
             0xAE => self.ld(addressing::mode_abs, Register8::X),    // LDX, ABS
             0xB6 => self.ld(addressing::mode_zpy, Register8::X),    // LDX, ZPY
             0xBE => self.ld(addressing::mode_aby, Register8::X),    // LDX, ABY
+
+            // LDY
+            0xA0 => self.ld(addressing::mode_imm, Register8::Y),    // LDY, IMM
+            0xA4 => self.ld(addressing::mode_zp0, Register8::Y),    // LDY, ZP0
+            0xAC => self.ld(addressing::mode_abs, Register8::Y),    // LDY, ABS
+            0xB4 => self.ld(addressing::mode_zpx, Register8::Y),    // LDY, ZPX
+            0xBC => self.ld(addressing::mode_abx, Register8::Y),    // LDY, ABX
 
             // Not implemented
             _ => todo!("Instruction 0x{:04x} not implemented", instruction),
@@ -76,6 +85,7 @@ impl Cpu {
         }
     }
 
+    /// Generic LD function supporting all variants of the LDA, LDX and LDY instructions
     fn ld(&mut self, mode: AddrModeFn, reg: Register8) {
         match mode(self) {
             Operand::Value(val) => self[reg] = val,
@@ -937,5 +947,495 @@ mod ldx_instruction_tests {
 
         cpu.exec(0xB5); // LDA $20,X
         assert_eq!(cpu.a, 0x99, "Should load from $0025 using X=$05");
+    }
+}
+
+#[cfg(test)]
+mod ldy_instruction_tests {
+    use super::*;
+
+    // Helper to create a CPU with memory initialized
+    fn setup_cpu(memory: &[(u16, u8)]) -> Cpu {
+        let mut cpu = Cpu::new();
+        for &(addr, val) in memory {
+            if addr <= 0x07FF {
+                cpu.write(addr, val);
+            }
+        }
+        cpu
+    }
+
+    // LDY IMMEDIATE TESTS
+    #[test]
+    fn test_ldy_imm_loads_value() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA0), // LDY immediate
+            (0x0001, 0x42), // value to load
+        ]);
+        cpu.pc = 0x0000;
+
+        cpu.exec(0xA0);
+
+        assert_eq!(cpu.y, 0x42);
+        assert_eq!(cpu.pc, 0x0002);
+    }
+
+    #[test]
+    fn test_ldy_imm_zero_sets_z_flag() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA0),
+            (0x0001, 0x00),
+        ]);
+        cpu.pc = 0x0000;
+        cpu.status = 0x00;
+
+        cpu.exec(0xA0);
+
+        assert_eq!(cpu.y, 0x00);
+        assert_eq!(cpu.status & 0b0000_0010, 0b0000_0010, "Z flag should be set");
+        assert_eq!(cpu.status & 0b1000_0000, 0b0000_0000, "N flag should be clear");
+    }
+
+    #[test]
+    fn test_ldy_imm_negative_sets_n_flag() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA0),
+            (0x0001, 0x80),
+        ]);
+        cpu.pc = 0x0000;
+        cpu.status = 0x00;
+
+        cpu.exec(0xA0);
+
+        assert_eq!(cpu.y, 0x80);
+        assert_eq!(cpu.status & 0b0000_0010, 0b0000_0000, "Z flag should be clear");
+        assert_eq!(cpu.status & 0b1000_0000, 0b1000_0000, "N flag should be set");
+    }
+
+    #[test]
+    fn test_ldy_imm_positive_clears_both_flags() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA0),
+            (0x0001, 0x7F),
+        ]);
+        cpu.pc = 0x0000;
+        cpu.status = 0xFF; // Set all flags initially
+
+        cpu.exec(0xA0);
+
+        assert_eq!(cpu.y, 0x7F);
+        assert_eq!(cpu.status & 0b0000_0010, 0b0000_0000, "Z flag should be clear");
+        assert_eq!(cpu.status & 0b1000_0000, 0b0000_0000, "N flag should be clear");
+    }
+
+    // LDY ZERO-PAGE TESTS
+    #[test]
+    fn test_ldy_zp0_loads_from_zero_page() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA4), // LDY zero-page
+            (0x0001, 0x42), // Zero-page address
+            (0x0042, 0x99), // Value at $0042
+        ]);
+        cpu.pc = 0x0000;
+
+        cpu.exec(0xA4);
+
+        assert_eq!(cpu.y, 0x99);
+        assert_eq!(cpu.pc, 0x0002);
+    }
+
+    #[test]
+    fn test_ldy_zp0_sets_flags_correctly() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA4),
+            (0x0001, 0x50),
+            (0x0050, 0x00),
+        ]);
+        cpu.pc = 0x0000;
+        cpu.status = 0x00;
+
+        cpu.exec(0xA4);
+
+        assert_eq!(cpu.y, 0x00);
+        assert_eq!(cpu.status & 0b0000_0010, 0b0000_0010, "Z flag should be set");
+    }
+
+    // LDY ZERO-PAGE,X TESTS
+    #[test]
+    fn test_ldy_zpx_loads_with_x_offset() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xB4), // LDY zero-page,X
+            (0x0001, 0x40), // Base address
+            (0x0045, 0xAB), // Value at $0040 + $05 = $0045
+        ]);
+        cpu.pc = 0x0000;
+        cpu.x = 0x05;
+
+        cpu.exec(0xB4);
+
+        assert_eq!(cpu.y, 0xAB);
+        assert_eq!(cpu.pc, 0x0002);
+    }
+
+    #[test]
+    fn test_ldy_zpx_wraps_in_zero_page() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xB4),
+            (0x0001, 0xFF), // Base address
+            (0x0004, 0xCD), // Value at ($FF + $05) & $FF = $04
+        ]);
+        cpu.pc = 0x0000;
+        cpu.x = 0x05;
+
+        cpu.exec(0xB4);
+
+        assert_eq!(cpu.y, 0xCD);
+    }
+
+    #[test]
+    fn test_ldy_zpx_negative_value() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xB4),
+            (0x0001, 0x10),
+            (0x0015, 0xFF),
+        ]);
+        cpu.pc = 0x0000;
+        cpu.x = 0x05;
+        cpu.status = 0x00;
+
+        cpu.exec(0xB4);
+
+        assert_eq!(cpu.y, 0xFF);
+        assert_eq!(cpu.status & 0b1000_0000, 0b1000_0000, "N flag should be set");
+    }
+
+    // LDY ABSOLUTE TESTS
+    #[test]
+    fn test_ldy_abs_loads_from_absolute_address() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xAC), // LDY absolute
+            (0x0001, 0x34), // Low byte
+            (0x0002, 0x02), // High byte ($0234)
+            (0x0234, 0x77), // Value at $0234
+        ]);
+        cpu.pc = 0x0000;
+
+        cpu.exec(0xAC);
+
+        assert_eq!(cpu.y, 0x77);
+        assert_eq!(cpu.pc, 0x0003);
+    }
+
+    #[test]
+    fn test_ldy_abs_negative_value() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xAC),
+            (0x0001, 0x50),
+            (0x0002, 0x00),
+            (0x0050, 0xFF),
+        ]);
+        cpu.pc = 0x0000;
+        cpu.status = 0x00;
+
+        cpu.exec(0xAC);
+
+        assert_eq!(cpu.y, 0xFF);
+        assert_eq!(cpu.status & 0b1000_0000, 0b1000_0000, "N flag should be set");
+        assert_eq!(cpu.status & 0b0000_0010, 0b0000_0000, "Z flag should be clear");
+    }
+
+    // LDY ABSOLUTE,X TESTS
+    #[test]
+    fn test_ldy_abx_loads_with_x_offset() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xBC), // LDY absolute,X
+            (0x0001, 0x00),
+            (0x0002, 0x02), // Base address $0200
+            (0x020A, 0x88), // Value at $0200 + $0A = $020A
+        ]);
+        cpu.pc = 0x0000;
+        cpu.x = 0x0A;
+
+        cpu.exec(0xBC);
+
+        assert_eq!(cpu.y, 0x88);
+        assert_eq!(cpu.pc, 0x0003);
+    }
+
+    #[test]
+    fn test_ldy_abx_zero_value() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xBC),
+            (0x0001, 0x00),
+            (0x0002, 0x03), // Base address $0300
+            (0x0315, 0x00), // Value at $0300 + $15 = $0315
+        ]);
+        cpu.pc = 0x0000;
+        cpu.x = 0x15;
+        cpu.status = 0x00;
+
+        cpu.exec(0xBC);
+
+        assert_eq!(cpu.y, 0x00);
+        assert_eq!(cpu.status & 0b0000_0010, 0b0000_0010, "Z flag should be set");
+    }
+
+    // FLAG BEHAVIOR COMPREHENSIVE TESTS
+    #[test]
+    fn test_ldy_flag_combinations() {
+        let test_cases = vec![
+            (0x00, true, false),   // Zero: Z=1, N=0
+            (0x01, false, false),  // Small positive: Z=0, N=0
+            (0x7F, false, false),  // Max positive: Z=0, N=0
+            (0x80, false, true),   // Min negative: Z=0, N=1
+            (0xFF, false, true),   // Max negative: Z=0, N=1
+        ];
+
+        for (value, expect_z, expect_n) in test_cases {
+            let mut cpu = setup_cpu(&[
+                (0x0000, 0xA0),
+                (0x0001, value),
+            ]);
+            cpu.pc = 0x0000;
+            cpu.status = 0x00;
+
+            cpu.exec(0xA0);
+
+            assert_eq!(cpu.y, value, "Failed for value 0x{:02X}", value);
+
+            let z_flag = (cpu.status & 0b0000_0010) != 0;
+            let n_flag = (cpu.status & 0b1000_0000) != 0;
+
+            assert_eq!(z_flag, expect_z,
+                       "Z flag mismatch for value 0x{:02X}: expected {}, got {}",
+                       value, expect_z, z_flag);
+            assert_eq!(n_flag, expect_n,
+                       "N flag mismatch for value 0x{:02X}: expected {}, got {}",
+                       value, expect_n, n_flag);
+        }
+    }
+
+    // REGISTER PRESERVATION TESTS
+    #[test]
+    fn test_ldy_preserves_a_and_x() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA0),
+            (0x0001, 0x42),
+        ]);
+        cpu.pc = 0x0000;
+        cpu.a = 0xAA;
+        cpu.x = 0xBB;
+
+        cpu.exec(0xA0);
+
+        assert_eq!(cpu.a, 0xAA, "A register should be preserved");
+        assert_eq!(cpu.x, 0xBB, "X register should be preserved");
+    }
+
+    #[test]
+    fn test_ldy_only_affects_zn_flags() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA0),
+            (0x0001, 0x42),
+        ]);
+        cpu.pc = 0x0000;
+        cpu.status = 0b0111_1101; // All flags except Z and N
+
+        cpu.exec(0xA0);
+
+        let other_flags = cpu.status & 0b0111_1101;
+        assert_eq!(other_flags, 0b0111_1101,
+                   "LDY should only modify Z and N flags, not C, I, D, or V");
+    }
+
+    // PC ADVANCEMENT TESTS
+    #[test]
+    fn test_ldy_pc_advancement() {
+        let test_cases = vec![
+            (0xA0, 0x0000, 0x0002), // Immediate: PC + 2
+            (0xA4, 0x0000, 0x0002), // Zero-page: PC + 2
+            (0xB4, 0x0000, 0x0002), // Zero-page,X: PC + 2
+            (0xAC, 0x0000, 0x0003), // Absolute: PC + 3
+            (0xBC, 0x0000, 0x0003), // Absolute,X: PC + 3
+        ];
+
+        for (opcode, start_pc, expected_pc) in test_cases {
+            let mut cpu = setup_cpu(&[
+                (start_pc, opcode),
+                (start_pc + 1, 0x10),
+                (start_pc + 2, 0x02), // -> $0210
+                (0x0010, 0x42),
+                (0x0012, 0x99),
+                (0x0210, 0xAA),
+            ]);
+            cpu.pc = start_pc;
+            cpu.x = 0x02;
+
+            cpu.exec(opcode);
+
+            assert_eq!(cpu.pc, expected_pc,
+                       "PC advancement failed for opcode 0x{:02X}", opcode);
+        }
+    }
+
+    // SPECIAL: X-INDEXING BEHAVIOR
+    #[test]
+    fn test_ldy_uses_x_register_not_y() {
+        // This test verifies that LDY correctly uses X for indexing, not Y
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xB4), // LDY zero-page,X
+            (0x0001, 0x20),
+            (0x0028, 0x55), // At $20 + X($08) = $28
+            (0x0025, 0x88), // At $20 + Y($05) = $25
+        ]);
+        cpu.pc = 0x0000;
+        cpu.x = 0x08; // Should be used
+        cpu.y = 0x05; // Should NOT be used
+
+        cpu.exec(0xB4);
+
+        // Should load from $0028 (using X), not $0025 (using Y)
+        assert_eq!(cpu.y, 0x55, "LDY should use X register for indexing");
+    }
+
+    #[test]
+    fn test_ldy_abx_uses_x_not_y() {
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xBC), // LDY absolute,X
+            (0x0001, 0x00),
+            (0x0002, 0x02), // Base $0200
+            (0x0208, 0x55), // At $0200 + X($08) = $0208
+            (0x0205, 0x88), // At $0200 + Y($05) = $0205
+        ]);
+        cpu.pc = 0x0000;
+        cpu.x = 0x08; // Should be used
+        cpu.y = 0x05; // Should NOT be used
+
+        cpu.exec(0xBC);
+
+        assert_eq!(cpu.y, 0x55, "LDY absolute,X should use X register");
+    }
+
+    // CROSS-VALIDATION WITH LDA
+    #[test]
+    fn test_ldy_behaves_like_lda_for_flags() {
+        // LDY should set flags identically to LDA
+        let values = vec![0x00, 0x42, 0x80, 0xFF];
+
+        for value in values {
+            // Test LDA
+            let mut cpu_lda = setup_cpu(&[
+                (0x0000, 0xA9), // LDA immediate
+                (0x0001, value),
+            ]);
+            cpu_lda.pc = 0x0000;
+            cpu_lda.status = 0x00;
+            cpu_lda.exec(0xA9);
+            let lda_flags = cpu_lda.status & 0b1000_0010; // Z and N flags
+
+            // Test LDY
+            let mut cpu_ldy = setup_cpu(&[
+                (0x0000, 0xA0), // LDY immediate
+                (0x0001, value),
+            ]);
+            cpu_ldy.pc = 0x0000;
+            cpu_ldy.status = 0x00;
+            cpu_ldy.exec(0xA0);
+            let ldy_flags = cpu_ldy.status & 0b1000_0010;
+
+            assert_eq!(lda_flags, ldy_flags,
+                       "LDY and LDA should set flags identically for value 0x{:02X}", value);
+        }
+    }
+
+    // EDGE CASE: LOADING INTO Y THEN USING Y
+    #[test]
+    fn test_ldy_then_use_y_for_indexing() {
+        // Load a value into Y, then use it for indexing
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA0), // LDY immediate
+            (0x0001, 0x05), // Load 5 into Y
+            (0x0002, 0xB9), // LDA absolute,Y
+            (0x0003, 0x00),
+            (0x0004, 0x02), // Base address $0200
+            (0x0205, 0x99), // Value at $0200 + $05 = $0205
+        ]);
+        cpu.pc = 0x0000;
+
+        cpu.exec(0xA0); // LDY #$05
+        assert_eq!(cpu.y, 0x05);
+        assert_eq!(cpu.pc, 0x0002);
+
+        cpu.exec(0xB9); // LDA $0200,Y
+        assert_eq!(cpu.a, 0x99, "Should load from $0205 using Y=$05");
+    }
+
+    // SYMMETRY TEST: LDX vs LDY
+    #[test]
+    fn test_ldx_and_ldy_are_symmetric() {
+        // LDX uses Y-indexing, LDY uses X-indexing
+        // This tests that they're properly symmetric
+
+        // LDX zero-page,Y
+        let mut cpu_ldx = setup_cpu(&[
+            (0x0000, 0xB6), // LDX zero-page,Y
+            (0x0001, 0x20),
+            (0x0025, 0x42),
+        ]);
+        cpu_ldx.pc = 0x0000;
+        cpu_ldx.y = 0x05;
+        cpu_ldx.exec(0xB6);
+
+        // LDY zero-page,X
+        let mut cpu_ldy = setup_cpu(&[
+            (0x0000, 0xB4), // LDY zero-page,X
+            (0x0001, 0x20),
+            (0x0025, 0x42),
+        ]);
+        cpu_ldy.pc = 0x0000;
+        cpu_ldy.x = 0x05;
+        cpu_ldy.exec(0xB4);
+
+        assert_eq!(cpu_ldx.x, cpu_ldy.y, "LDX,Y and LDY,X should be symmetric");
+        assert_eq!(cpu_ldx.x, 0x42);
+    }
+
+    // PRACTICAL USAGE PATTERN
+    #[test]
+    fn test_ldy_for_loop_counter() {
+        // Common pattern: use Y as loop counter
+        let mut cpu = setup_cpu(&[
+            (0x0000, 0xA0), // LDY immediate
+            (0x0001, 0x00), // Start at 0
+            (0x0002, 0xB9), // LDA absolute,Y
+            (0x0003, 0x00),
+            (0x0004, 0x03), // Base address $0300
+            (0x0300, 0x11),
+            (0x0301, 0x22),
+            (0x0302, 0x33),
+        ]);
+        cpu.pc = 0x0000;
+
+        // Initialize loop counter
+        cpu.exec(0xA0); // LDY #$00
+        assert_eq!(cpu.y, 0x00);
+
+        // First iteration
+        cpu.exec(0xB9); // LDA $0300,Y
+        assert_eq!(cpu.a, 0x11, "First iteration should load 0x11");
+
+        // Manually increment Y and reset PC for next iteration
+        cpu.y = 0x01;
+        cpu.pc = 0x0002;
+
+        // Second iteration
+        cpu.exec(0xB9);
+        assert_eq!(cpu.a, 0x22, "Second iteration should load 0x22");
+
+        // Third iteration
+        cpu.y = 0x02;
+        cpu.pc = 0x0002;
+        cpu.exec(0xB9);
+        assert_eq!(cpu.a, 0x33, "Third iteration should load 0x33");
     }
 }
