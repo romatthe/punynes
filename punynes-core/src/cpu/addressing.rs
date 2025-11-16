@@ -2,19 +2,19 @@ use crate::cpu::Cpu;
 use crate::MemRead;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum Operand {
+pub(crate) enum Operand {
     Value(u8),
     Address(u16),
 }
 
 /// Each addressing mode is a function taking &mut Cpu and returning Operand (which
 /// can be a u8 or u16).
-pub type AddrModeFn = fn(&mut Cpu) -> Operand;
+pub(crate) type AddrModeFn = fn(&mut Cpu) -> Operand;
 
 /// Absolute mode addressing
 ///
 /// The operand value is the next full 16-bit word.
-fn mode_abs(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_abs(cpu: &mut Cpu) -> Operand {
     let lo = cpu.read(cpu.pc.wrapping_add(1));
     let hi = cpu.read(cpu.pc.wrapping_add(2));
     cpu.pc = cpu.pc.wrapping_add(3);
@@ -25,7 +25,7 @@ fn mode_abs(cpu: &mut Cpu) -> Operand {
 ///
 /// The operand value is the next full 16-bit word, with the value of the X register added on
 /// to it. Page crosses may be handled.
-fn mode_abx(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_abx(cpu: &mut Cpu) -> Operand {
     let lo = cpu.read(cpu.pc.wrapping_add(1));
     let hi = cpu.read(cpu.pc.wrapping_add(2));
     let base = u16::from_le_bytes([lo, hi]);
@@ -44,7 +44,7 @@ fn mode_abx(cpu: &mut Cpu) -> Operand {
 ///
 /// The operand value is the next full 16-bit word, with the value of the Y register added on
 /// to it. Page crosses may be handled.
-fn mode_aby(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_aby(cpu: &mut Cpu) -> Operand {
     let lo = cpu.read(cpu.pc.wrapping_add(1));
     let hi = cpu.read(cpu.pc.wrapping_add(2));
     let base = u16::from_le_bytes([lo, hi]);
@@ -62,7 +62,7 @@ fn mode_aby(cpu: &mut Cpu) -> Operand {
 /// Accumulator mode addressing
 ///
 /// The operand value is simply what is stored in the accumulator.
-fn mode_acc(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_acc(cpu: &mut Cpu) -> Operand {
     cpu.pc = cpu.pc.wrapping_add(1);
     Operand::Value(cpu.a)
 }
@@ -72,7 +72,7 @@ fn mode_acc(cpu: &mut Cpu) -> Operand {
 /// The operand address is acquired by reading the next byte, adding the X register to it (wrapping
 /// at 0xFF). This results in a pointer into the Zero-Page, from which we read two LE bytes, which
 /// gives the final address.
-fn mode_idx(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_idx(cpu: &mut Cpu) -> Operand {
     let zp = cpu.read(cpu.pc.wrapping_add(1));
     let zp = zp.wrapping_add(cpu.x); // wraps around at 0xFF
     let lo = cpu.read(u16::from_le_bytes([zp, 0x00]));
@@ -87,7 +87,7 @@ fn mode_idx(cpu: &mut Cpu) -> Operand {
 /// The operand address is acquired by reading the next byte as a pointer into the Zero-Page,
 /// from which we read two LE bytes, which gives the final address. We add the value of the Y register
 /// to this in order to get the correct address.
-fn mode_idy(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_idy(cpu: &mut Cpu) -> Operand {
     let zp = cpu.read(cpu.pc.wrapping_add(1));
     let lo = cpu.read(u16::from_le_bytes([zp, 0x00]));
     let hi = cpu.read(u16::from_le_bytes([zp.wrapping_add(1), 0x00])); // high bytes wraps around 0xFF
@@ -102,7 +102,7 @@ fn mode_idy(cpu: &mut Cpu) -> Operand {
 /// Immediate mode addressing
 ///
 /// The next byte is used as the operand value.
-fn mode_imm(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_imm(cpu: &mut Cpu) -> Operand {
     let val = cpu.read(cpu.pc.wrapping_add(1));
     cpu.pc = cpu.pc.wrapping_add(2);
     Operand::Value(val)
@@ -111,7 +111,7 @@ fn mode_imm(cpu: &mut Cpu) -> Operand {
 /// Implied mode addressing
 ///
 /// The operand value is implicitly defined by the instruction. We return nothing useful.
-fn mode_imp(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_imp(cpu: &mut Cpu) -> Operand {
     cpu.pc = cpu.pc.wrapping_add(1);
     Operand::Value(0) // TODO: Is there a better alternative? Adding an enum adds a match arm.
 }
@@ -120,7 +120,7 @@ fn mode_imp(cpu: &mut Cpu) -> Operand {
 ///
 /// The operand address is the next read byte (u8), interpreted as a signed byte (i8), added to
 /// the value of the PC.
-fn mode_rel(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_rel(cpu: &mut Cpu) -> Operand {
     let offset = cpu.read(cpu.pc.wrapping_add(1)) as i8;
     cpu.pc = cpu.pc.wrapping_add(2);
     // Note: the i8 is first cast to an i16, so the signedness is retained
@@ -133,7 +133,7 @@ fn mode_rel(cpu: &mut Cpu) -> Operand {
 /// The operand is an address formed with the next read byte as the low byte, and 0x00 as the
 /// high byte. This allows us to access the "Zero-Page" (the first 0xFF bytes in memory) by reading
 /// only a single byte.
-fn mode_zp0(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_zp0(cpu: &mut Cpu) -> Operand {
     let lo = cpu.read(cpu.pc.wrapping_add(1));
     cpu.pc = cpu.pc.wrapping_add(2);
     Operand::Address(u16::from_le_bytes([lo, 0x00]))
@@ -143,7 +143,7 @@ fn mode_zp0(cpu: &mut Cpu) -> Operand {
 ///
 /// Same as Zero-Page addressing, but we add the value of the X register to the low byte first,
 /// wrapping around at 0xFF so we always stay within the Zero-Page.
-fn mode_zpx(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_zpx(cpu: &mut Cpu) -> Operand {
     let lo = cpu.read(cpu.pc.wrapping_add(1));
     let lo = lo.wrapping_add(cpu.x); // wraps around at 0xFF
     cpu.pc = cpu.pc.wrapping_add(2);
@@ -154,7 +154,7 @@ fn mode_zpx(cpu: &mut Cpu) -> Operand {
 ///
 /// Same as Zero-Page addressing, but we add the value of the Y register to the low byte first,
 /// wrapping around at 0xFF so we always stay within the Zero-Page.
-fn mode_zpy(cpu: &mut Cpu) -> Operand {
+pub(crate) fn mode_zpy(cpu: &mut Cpu) -> Operand {
     let lo = cpu.read(cpu.pc.wrapping_add(1));
     let lo = lo.wrapping_add(cpu.y); // wraps around at 0xFF
     cpu.pc = cpu.pc.wrapping_add(2);
